@@ -15,6 +15,22 @@ export interface PaginationResult<T> {
   hasNext: boolean;
 }
 
+// In-memory fallback cache
+let inMemoryLeads: Lead[] = [...INITIAL_LEADS];
+
+function getMemoryLeads(): Lead[] {
+  const localPath = path.join(process.cwd(), 'data', 'leads.json');
+  if (fs.existsSync(localPath)) {
+    try {
+      const fileLeads = JSON.parse(fs.readFileSync(localPath, 'utf8'));
+      if (Array.isArray(fileLeads) && fileLeads.length > 0) {
+        return fileLeads;
+      }
+    } catch {}
+  }
+  return inMemoryLeads;
+}
+
 export async function getAllLeads(filters?: {
   status?: string;
   category?: string;
@@ -159,7 +175,7 @@ export async function getAllLeads(filters?: {
       hasNext: page < totalPages
     };
   } catch (err) {
-    console.error('Mongo error in getAllLeads, fallback to local file', err);
+    console.error('Mongo error in getAllLeads, fallback to local/in-memory leads', err);
     return getLocalAllLeads(filters);
   }
 }
@@ -173,40 +189,44 @@ export async function getLeadById(id: string): Promise<Lead | null> {
         { leadId: { $regex: new RegExp(`^${id}$`, 'i') } }
       ]
     });
-    if (!doc) return null;
-    return {
-      id: doc.id || doc.leadId || String(doc._id),
-      leadId: doc.leadId,
-      businessName: doc.businessName,
-      category: doc.category,
-      products: doc.products,
-      contactPerson: doc.contactPerson,
-      phone: doc.phone,
-      address: doc.address,
-      city: doc.city,
-      pincode: doc.pincode,
-      landmark: doc.landmark,
-      estYear: doc.estYear,
-      turnover: doc.turnover,
-      teamSize: doc.teamSize,
-      facilityArea: doc.facilityArea,
-      targetBuyers: doc.targetBuyers,
-      companyBio: doc.companyBio,
-      iceBreaker: doc.iceBreaker,
-      websiteStatus: doc.websiteStatus || 'No Website',
-      pitchAngle: doc.pitchAngle,
-      status: doc.status || 'Pending',
-      notes: doc.notes || '',
-      callbackTime: doc.callbackTime || '',
-      assignedTo: doc.assignedTo,
-      assignedToName: doc.assignedToName,
-      assignedAt: doc.assignedAt,
-      updatedAt: doc.updatedAt
-    };
+    if (doc) {
+      return {
+        id: doc.id || doc.leadId || String(doc._id),
+        leadId: doc.leadId,
+        businessName: doc.businessName,
+        category: doc.category,
+        products: doc.products,
+        contactPerson: doc.contactPerson,
+        phone: doc.phone,
+        address: doc.address,
+        city: doc.city,
+        pincode: doc.pincode,
+        landmark: doc.landmark,
+        estYear: doc.estYear,
+        turnover: doc.turnover,
+        teamSize: doc.teamSize,
+        facilityArea: doc.facilityArea,
+        targetBuyers: doc.targetBuyers,
+        companyBio: doc.companyBio,
+        iceBreaker: doc.iceBreaker,
+        websiteStatus: doc.websiteStatus || 'No Website',
+        pitchAngle: doc.pitchAngle,
+        status: doc.status || 'Pending',
+        notes: doc.notes || '',
+        callbackTime: doc.callbackTime || '',
+        assignedTo: doc.assignedTo,
+        assignedToName: doc.assignedToName,
+        assignedAt: doc.assignedAt,
+        updatedAt: doc.updatedAt
+      };
+    }
   } catch (err) {
     console.error('Mongo error in getLeadById', err);
-    return null;
   }
+
+  const all = getMemoryLeads();
+  const clean = id.trim().toLowerCase();
+  return all.find(l => l.leadId?.toLowerCase() === clean || l.id?.toLowerCase() === clean) || null;
 }
 
 export async function updateLead(id: string, updates: Partial<Lead>): Promise<Lead | null> {
@@ -226,11 +246,19 @@ export async function updateLead(id: string, updates: Partial<Lead>): Promise<Le
       },
       { $set: updatePayload }
     );
-    return await getLeadById(id);
+    const updated = await getLeadById(id);
+    if (updated) return updated;
   } catch (err) {
     console.error('Mongo error in updateLead', err);
-    return null;
   }
+
+  // Update in-memory
+  const idx = inMemoryLeads.findIndex(l => l.leadId?.toLowerCase() === id.toLowerCase() || l.id === id);
+  if (idx !== -1) {
+    inMemoryLeads[idx] = { ...inMemoryLeads[idx], ...updatePayload };
+    return inMemoryLeads[idx];
+  }
+  return null;
 }
 
 export async function assignLeads(
@@ -238,15 +266,16 @@ export async function assignLeads(
   username: string,
   callerName: string
 ): Promise<{ success: boolean; updatedCount: number }> {
+  const idSet = new Set(leadIds.map(id => id.trim().toLowerCase()));
+  let count = 0;
+
   try {
     const { db } = await connectToDatabase();
-    const idSet = leadIds.map(id => id.trim());
-
     const res = await db.collection('leads').updateMany(
       {
         $or: [
-          { id: { $in: idSet } },
-          { leadId: { $in: idSet } }
+          { id: { $in: leadIds.map(id => id.trim()) } },
+          { leadId: { $in: leadIds.map(id => id.trim()) } }
         ]
       },
       {
@@ -258,24 +287,36 @@ export async function assignLeads(
         }
       }
     );
-
-    return { success: true, updatedCount: res.modifiedCount };
+    count = res.modifiedCount;
   } catch (err: any) {
     console.error('Mongo error in assignLeads', err);
-    return { success: false, updatedCount: 0 };
   }
+
+  // Also update in-memory
+  inMemoryLeads.forEach(l => {
+    if (idSet.has(l.leadId.toLowerCase()) || (l.id && idSet.has(l.id.toLowerCase()))) {
+      l.assignedTo = username;
+      l.assignedToName = callerName;
+      l.assignedAt = new Date().toISOString();
+      l.updatedAt = new Date().toISOString();
+      if (!count) count++;
+    }
+  });
+
+  return { success: true, updatedCount: count };
 }
 
 export async function unassignLeads(leadIds: string[]): Promise<{ success: boolean; updatedCount: number }> {
+  const idSet = new Set(leadIds.map(id => id.trim().toLowerCase()));
+  let count = 0;
+
   try {
     const { db } = await connectToDatabase();
-    const idSet = leadIds.map(id => id.trim());
-
     const res = await db.collection('leads').updateMany(
       {
         $or: [
-          { id: { $in: idSet } },
-          { leadId: { $in: idSet } }
+          { id: { $in: leadIds.map(id => id.trim()) } },
+          { leadId: { $in: leadIds.map(id => id.trim()) } }
         ]
       },
       {
@@ -289,12 +330,22 @@ export async function unassignLeads(leadIds: string[]): Promise<{ success: boole
         }
       }
     );
-
-    return { success: true, updatedCount: res.modifiedCount };
+    count = res.modifiedCount;
   } catch (err: any) {
     console.error('Mongo error in unassignLeads', err);
-    return { success: false, updatedCount: 0 };
   }
+
+  inMemoryLeads.forEach(l => {
+    if (idSet.has(l.leadId.toLowerCase()) || (l.id && idSet.has(l.id.toLowerCase()))) {
+      delete l.assignedTo;
+      delete l.assignedToName;
+      delete l.assignedAt;
+      l.updatedAt = new Date().toISOString();
+      if (!count) count++;
+    }
+  });
+
+  return { success: true, updatedCount: count };
 }
 
 export async function autoDistributeLeads(
@@ -325,38 +376,59 @@ export async function autoDistributeLeads(
     }
 
     const unassignedDocs = await collection.find(query).toArray();
-    if (unassignedDocs.length === 0) {
-      return { success: true, distributedCount: 0, perCallerCount };
-    }
-
-    const bulkOps = unassignedDocs.map((doc, idx) => {
-      const caller = callers[idx % callers.length];
-      perCallerCount[caller.username] = (perCallerCount[caller.username] || 0) + 1;
-      return {
-        updateOne: {
-          filter: { _id: doc._id },
-          update: {
-            $set: {
-              assignedTo: caller.username,
-              assignedToName: caller.name,
-              assignedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
+    if (unassignedDocs.length > 0) {
+      const bulkOps = unassignedDocs.map((doc, idx) => {
+        const caller = callers[idx % callers.length];
+        perCallerCount[caller.username] = (perCallerCount[caller.username] || 0) + 1;
+        return {
+          updateOne: {
+            filter: { _id: doc._id },
+            update: {
+              $set: {
+                assignedTo: caller.username,
+                assignedToName: caller.name,
+                assignedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              }
             }
           }
-        }
-      };
-    });
+        };
+      });
 
-    await collection.bulkWrite(bulkOps);
-    return {
-      success: true,
-      distributedCount: unassignedDocs.length,
-      perCallerCount
-    };
+      const res = await collection.bulkWrite(bulkOps);
+      return {
+        success: true,
+        distributedCount: res.modifiedCount,
+        perCallerCount
+      };
+    }
   } catch (err) {
-    console.error('Mongo error in autoDistributeLeads', err);
-    return { success: false, distributedCount: 0, perCallerCount };
+    console.error('Mongo error in autoDistributeLeads, falling back to in-memory', err);
   }
+
+  // Fallback in-memory auto-distribution
+  let leadsToDist = inMemoryLeads;
+  if (options?.unassignedOnly !== false) {
+    leadsToDist = leadsToDist.filter(l => !l.assignedTo);
+  }
+  if (options?.category && options.category !== 'all') {
+    leadsToDist = leadsToDist.filter(l => l.category.toLowerCase().includes(options.category!.toLowerCase()));
+  }
+
+  leadsToDist.forEach((lead, idx) => {
+    const caller = callers[idx % callers.length];
+    lead.assignedTo = caller.username;
+    lead.assignedToName = caller.name;
+    lead.assignedAt = new Date().toISOString();
+    lead.updatedAt = new Date().toISOString();
+    perCallerCount[caller.username] = (perCallerCount[caller.username] || 0) + 1;
+  });
+
+  return {
+    success: true,
+    distributedCount: leadsToDist.length,
+    perCallerCount
+  };
 }
 
 export async function addLeads(
@@ -371,18 +443,15 @@ export async function addLeads(
       await collection.deleteMany({});
     }
 
-    const existingCount = await collection.countDocuments();
-
-    const formatted = newLeads.map((item, idx) => {
-      const leadNum = existingCount + idx + 1;
-      const lId = String(item.leadId || `LEAD-${leadNum}`);
+    const formatted: Lead[] = newLeads.map((item, idx) => {
+      const leadId = item.leadId || `LEAD-NEW-${Date.now()}-${idx + 1}`;
       return {
-        id: String(item.id || lId).toLowerCase().replace(/[^a-z0-9_-]/g, ''),
-        leadId: lId,
-        businessName: item.businessName || '',
-        category: item.category || 'General Manufacturing',
+        id: leadId,
+        leadId: leadId,
+        businessName: item.businessName || 'Unnamed Business',
+        category: item.category || 'General',
         products: item.products || '',
-        contactPerson: item.contactPerson || 'Sir/Madam',
+        contactPerson: item.contactPerson || 'Business Owner',
         phone: item.phone || '',
         address: item.address || '',
         city: item.city || 'Delhi NCR',
@@ -396,7 +465,7 @@ export async function addLeads(
         companyBio: item.companyBio || '',
         iceBreaker: item.iceBreaker || '',
         websiteStatus: item.websiteStatus || 'No Website',
-        pitchAngle: item.pitchAngle || 'High-converting digital catalog and website',
+        pitchAngle: item.pitchAngle || '',
         status: item.status || 'Pending',
         notes: item.notes || '',
         callbackTime: item.callbackTime || '',
@@ -408,14 +477,14 @@ export async function addLeads(
     });
 
     if (formatted.length > 0) {
-      await collection.insertMany(formatted);
+      await collection.insertMany(formatted as any);
     }
 
     const total = await collection.countDocuments();
     return { total, added: formatted.length };
   } catch (err) {
     console.error('Mongo error in addLeads', err);
-    return { total: 0, added: 0 };
+    return { total: inMemoryLeads.length, added: 0 };
   }
 }
 
@@ -454,7 +523,7 @@ export async function getStats(assignedTo?: string) {
       if (s._id === 'Interested') interested = s.count;
       else if (s._id === 'Callback') callback = s.count;
       else if (s._id === 'No Answer') noAnswer = s.count;
-      else if (s._id === 'Not Interested') rejected = s.count;
+      else if (s._id === 'Not Interested' || s._id === 'Rejected') rejected = s.count;
       else pending += s.count;
     });
 
@@ -473,19 +542,45 @@ export async function getStats(assignedTo?: string) {
       unassigned: unassignedCount
     };
   } catch (err) {
-    console.error('Mongo error in getStats', err);
-    return {
-      total: 0,
-      called: 0,
-      pending: 0,
-      interested: 0,
-      callback: 0,
-      noAnswer: 0,
-      rejected: 0,
-      conversionRate: 0,
-      unassigned: 0
-    };
+    console.error('Mongo error in getStats, fallback to memory', err);
   }
+
+  // Fallback calculation from in-memory/local leads
+  let leads = getMemoryLeads();
+  if (assignedTo && assignedTo !== 'all') {
+    leads = leads.filter(l => l.assignedTo?.toLowerCase() === assignedTo.toLowerCase());
+  }
+
+  let interested = 0;
+  let callback = 0;
+  let noAnswer = 0;
+  let rejected = 0;
+  let pending = 0;
+  let unassigned = 0;
+
+  leads.forEach(l => {
+    if (!l.assignedTo) unassigned++;
+    if (l.status === 'Interested') interested++;
+    else if (l.status === 'Callback') callback++;
+    else if (l.status === 'No Answer') noAnswer++;
+    else if (l.status === 'Not Interested' || l.status === 'Rejected') rejected++;
+    else pending++;
+  });
+
+  const called = interested + callback + noAnswer + rejected;
+  const conversionRate = called > 0 ? Math.round((interested / called) * 100) : 0;
+
+  return {
+    total: leads.length,
+    called,
+    pending,
+    interested,
+    callback,
+    noAnswer,
+    rejected,
+    conversionRate,
+    unassigned
+  };
 }
 
 export async function getCallerPerformance(callers: { username: string; name: string }[]) {
@@ -518,7 +613,7 @@ export async function getCallerPerformance(callers: { username: string; name: st
           if (row._id.status === 'Interested') interested += row.count;
           else if (row._id.status === 'Callback') callback += row.count;
           else if (row._id.status === 'No Answer') noAnswer += row.count;
-          else if (row._id.status === 'Not Interested') rejected += row.count;
+          else if (row._id.status === 'Not Interested' || row._id.status === 'Rejected') rejected += row.count;
           else pending += row.count;
         }
       });
@@ -540,23 +635,96 @@ export async function getCallerPerformance(callers: { username: string; name: st
       };
     });
   } catch (err) {
-    console.error('Mongo error in getCallerPerformance', err);
-    return [];
+    console.error('Mongo error in getCallerPerformance, fallback to memory', err);
   }
+
+  const allLeads = getMemoryLeads();
+  return callers.map(caller => {
+    const uLower = caller.username.toLowerCase();
+    const callerLeads = allLeads.filter(l => l.assignedTo?.toLowerCase() === uLower);
+    let interested = 0;
+    let callback = 0;
+    let noAnswer = 0;
+    let rejected = 0;
+    let pending = 0;
+
+    callerLeads.forEach(l => {
+      if (l.status === 'Interested') interested++;
+      else if (l.status === 'Callback') callback++;
+      else if (l.status === 'No Answer') noAnswer++;
+      else if (l.status === 'Not Interested' || l.status === 'Rejected') rejected++;
+      else pending++;
+    });
+
+    const called = interested + callback + noAnswer + rejected;
+    const conversionRate = called > 0 ? Math.round((interested / called) * 100) : 0;
+
+    return {
+      username: caller.username,
+      name: caller.name,
+      totalAssigned: callerLeads.length,
+      called,
+      pending,
+      interested,
+      callback,
+      noAnswer,
+      rejected,
+      conversionRate
+    };
+  });
 }
 
-// Fallback for local JSON
+// Fallback for local/in-memory leads with complete search, filter, and pagination
 function getLocalAllLeads(filters?: any): PaginationResult<Lead> {
-  const localPath = path.join(process.cwd(), 'data', 'leads.json');
-  let leads: Lead[] = [];
-  if (fs.existsSync(localPath)) {
-    try { leads = JSON.parse(fs.readFileSync(localPath, 'utf8')); } catch {}
+  let leads = getMemoryLeads();
+
+  // 1. Filter by assignedTo
+  if (filters?.assignedTo && filters.assignedTo !== 'all') {
+    if (filters.assignedTo === 'unassigned') {
+      leads = leads.filter(l => !l.assignedTo);
+    } else {
+      const targetCaller = filters.assignedTo.toLowerCase();
+      leads = leads.filter(l => l.assignedTo?.toLowerCase() === targetCaller);
+    }
   }
-  const page = filters?.page || 1;
-  const limit = filters?.limit || 20;
+
+  // 2. Filter by status
+  if (filters?.status && filters.status !== 'all') {
+    if (filters.status === 'Pending') {
+      leads = leads.filter(l => !l.status || l.status === 'Pending');
+    } else {
+      leads = leads.filter(l => l.status === filters.status);
+    }
+  }
+
+  // 3. Filter by category
+  if (filters?.category && filters.category !== 'all') {
+    leads = leads.filter(l => l.category?.toLowerCase().includes(filters.category.toLowerCase()));
+  }
+
+  // 4. Server-side Search filter
+  if (filters?.search && filters.search.trim()) {
+    const q = filters.search.trim().toLowerCase();
+    leads = leads.filter(l =>
+      l.businessName?.toLowerCase().includes(q) ||
+      l.contactPerson?.toLowerCase().includes(q) ||
+      String(l.phone || '').includes(q) ||
+      l.city?.toLowerCase().includes(q) ||
+      l.landmark?.toLowerCase().includes(q) ||
+      l.leadId?.toLowerCase().includes(q) ||
+      l.products?.toLowerCase().includes(q) ||
+      l.companyBio?.toLowerCase().includes(q) ||
+      l.assignedToName?.toLowerCase().includes(q) ||
+      l.assignedTo?.toLowerCase().includes(q)
+    );
+  }
+
   const total = leads.length;
+  const page = Math.max(1, Number(filters?.page) || 1);
+  const limit = Math.max(1, Math.min(1000, Number(filters?.limit) || 20));
   const totalPages = Math.ceil(total / limit) || 1;
   const paged = leads.slice((page - 1) * limit, page * limit);
+
   return {
     leads: paged,
     total,

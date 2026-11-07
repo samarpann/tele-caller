@@ -2,6 +2,8 @@ import { MongoClient, Db } from 'mongodb';
 import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
+import { INITIAL_LEADS } from './initial-leads';
+import { FALLBACK_USERS } from './users';
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://samarpansingh17_db_user:TZCYzijR78tJz3CN@cluster0.yasfylo.mongodb.net/swastik_telecaller?retryWrites=true&w=majority&appName=Cluster0';
 const DB_NAME = 'swastik_telecaller';
@@ -17,9 +19,9 @@ export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db
 
   const client = new MongoClient(MONGODB_URI, {
     maxPoolSize: 10,
-    minPoolSize: 2,
-    serverSelectionTimeoutMS: 5000,
-    connectTimeoutMS: 10000,
+    minPoolSize: 1,
+    serverSelectionTimeoutMS: 4000,
+    connectTimeoutMS: 4000,
   });
 
   await client.connect();
@@ -50,7 +52,6 @@ async function initDatabase(db: Db) {
       await leadsCol.createIndex({ category: 1 });
       await leadsCol.createIndex({ updatedAt: -1 });
 
-      // Compound text index for fast search across all key business fields
       await leadsCol.createIndex({
         businessName: 'text',
         contactPerson: 'text',
@@ -67,47 +68,48 @@ async function initDatabase(db: Db) {
       // Indexes already present in Atlas
     }
 
-    // Check if initial seeding needed from local JSON
+    // Check if initial seeding needed
     const leadCount = await leadsCol.countDocuments();
     if (leadCount === 0) {
-      console.log('Seeding initial leads into MongoDB Atlas...');
+      console.log('Seeding 300 initial leads into MongoDB Atlas...');
+      let leadsToSeed = INITIAL_LEADS;
       const localLeadsPath = path.join(process.cwd(), 'data', 'leads.json');
       if (fs.existsSync(localLeadsPath)) {
-        const localLeads = JSON.parse(fs.readFileSync(localLeadsPath, 'utf8'));
-        if (Array.isArray(localLeads) && localLeads.length > 0) {
-          await leadsCol.insertMany(localLeads);
-          console.log(`✅ Seeded ${localLeads.length} leads into MongoDB Atlas.`);
-        }
+        try {
+          const localLeads = JSON.parse(fs.readFileSync(localLeadsPath, 'utf8'));
+          if (Array.isArray(localLeads) && localLeads.length > 0) {
+            leadsToSeed = localLeads;
+          }
+        } catch {}
+      }
+
+      if (leadsToSeed.length > 0) {
+        await leadsCol.insertMany(leadsToSeed as any);
+        console.log(`✅ Seeded ${leadsToSeed.length} leads into MongoDB Atlas.`);
       }
     }
 
     const userCount = await usersCol.countDocuments();
     if (userCount === 0) {
-      console.log('Seeding initial users with secure password hashes into MongoDB Atlas...');
+      console.log('Seeding initial users into MongoDB Atlas...');
+      let usersToSeed = FALLBACK_USERS;
       const localUsersPath = path.join(process.cwd(), 'data', 'users.json');
-      let usersToSeed: any[] = [];
-
       if (fs.existsSync(localUsersPath)) {
-        usersToSeed = JSON.parse(fs.readFileSync(localUsersPath, 'utf8'));
-      } else {
-        usersToSeed = [
-          { id: 'admin', username: 'admin', name: 'Super Admin', password: 'admin123', role: 'super_admin', active: true, createdAt: new Date().toISOString() },
-          { id: 'sales1', username: 'sales1', name: 'Priya Sharma', password: 'sales123', role: 'caller', active: true, createdAt: new Date().toISOString() },
-          { id: 'sales2', username: 'sales2', name: 'Rahul Verma', password: 'sales123', role: 'caller', active: true, createdAt: new Date().toISOString() },
-          { id: 'sales3', username: 'sales3', name: 'Neha Gupta', password: 'sales123', role: 'caller', active: true, createdAt: new Date().toISOString() },
-          { id: 'sales4', username: 'sales4', name: 'Amit Singh', password: 'sales123', role: 'caller', active: true, createdAt: new Date().toISOString() },
-          { id: 'sales5', username: 'sales5', name: 'Pooja Patel', password: 'sales123', role: 'caller', active: true, createdAt: new Date().toISOString() }
-        ];
+        try {
+          const localUsers = JSON.parse(fs.readFileSync(localUsersPath, 'utf8'));
+          if (Array.isArray(localUsers) && localUsers.length > 0) {
+            usersToSeed = localUsers;
+          }
+        } catch {}
       }
 
-      // Hash passwords with bcrypt
       const hashedUsers = usersToSeed.map(u => ({
         ...u,
-        passwordHash: bcrypt.hashSync(u.password, 10),
-        plainPassword: u.password // kept for admin display per requirement
+        passwordHash: u.passwordHash || (u.password ? bcrypt.hashSync(u.password, 10) : undefined),
+        plainPassword: u.plainPassword || u.password
       }));
 
-      await usersCol.insertMany(hashedUsers);
+      await usersCol.insertMany(hashedUsers as any);
       console.log(`✅ Seeded ${hashedUsers.length} secure users into MongoDB Atlas.`);
     }
   } catch (err) {
