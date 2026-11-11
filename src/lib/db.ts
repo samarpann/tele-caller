@@ -106,7 +106,10 @@ export async function getAllLeads(filters?: {
         { targetBuyers: regex },
         { companyBio: regex },
         { assignedToName: regex },
-        { assignedTo: regex }
+        { assignedTo: regex },
+        { jewelrySpecialty: regex },
+        { currentSoftware: regex },
+        { workshopStatus: regex }
       ];
 
       if (query.$and) {
@@ -162,7 +165,11 @@ export async function getAllLeads(filters?: {
       assignedTo: d.assignedTo,
       assignedToName: d.assignedToName,
       assignedAt: d.assignedAt,
-      updatedAt: d.updatedAt
+      updatedAt: d.updatedAt,
+      jewelrySpecialty: d.jewelrySpecialty,
+      currentSoftware: d.currentSoftware,
+      workshopStatus: d.workshopStatus,
+      targetSegment: d.targetSegment
     }));
 
     return {
@@ -217,7 +224,11 @@ export async function getLeadById(id: string): Promise<Lead | null> {
         assignedTo: doc.assignedTo,
         assignedToName: doc.assignedToName,
         assignedAt: doc.assignedAt,
-        updatedAt: doc.updatedAt
+        updatedAt: doc.updatedAt,
+        jewelrySpecialty: doc.jewelrySpecialty,
+        currentSoftware: doc.currentSoftware,
+        workshopStatus: doc.workshopStatus,
+        targetSegment: doc.targetSegment
       };
     }
   } catch (err) {
@@ -472,7 +483,11 @@ export async function addLeads(
         assignedTo: item.assignedTo,
         assignedToName: item.assignedToName,
         assignedAt: item.assignedAt,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        jewelrySpecialty: item.jewelrySpecialty,
+        currentSoftware: item.currentSoftware,
+        workshopStatus: item.workshopStatus,
+        targetSegment: item.targetSegment
       };
     });
 
@@ -715,7 +730,10 @@ function getLocalAllLeads(filters?: any): PaginationResult<Lead> {
       l.products?.toLowerCase().includes(q) ||
       l.companyBio?.toLowerCase().includes(q) ||
       l.assignedToName?.toLowerCase().includes(q) ||
-      l.assignedTo?.toLowerCase().includes(q)
+      l.assignedTo?.toLowerCase().includes(q) ||
+      l.jewelrySpecialty?.toLowerCase().includes(q) ||
+      l.currentSoftware?.toLowerCase().includes(q) ||
+      l.workshopStatus?.toLowerCase().includes(q)
     );
   }
 

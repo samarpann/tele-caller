@@ -1,3 +1,5 @@
+import { WEST_DELHI_JEWELLERS } from './west-delhi-jewellers';
+
 export interface Lead {
   id: string;
   leadId: string;
@@ -26,9 +28,15 @@ export interface Lead {
   assignedToName?: string;
   assignedAt?: string;
   updatedAt?: string;
+  // Jewellery Specific Fields
+  jewelrySpecialty?: string;
+  currentSoftware?: string;
+  workshopStatus?: string;
+  targetSegment?: string;
 }
 
 export const INITIAL_LEADS: Lead[] = [
+  ...WEST_DELHI_JEWELLERS,
   {
     "leadId": "NCR-CAF-001",
     "address": "Shop 14, Ground Floor, Starling Edge Mall, Sector 104",

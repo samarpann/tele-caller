@@ -79,6 +79,11 @@ interface Lead {
   assignedTo?: string;
   assignedToName?: string;
   assignedAt?: string;
+  // Jewellery Specific Fields
+  jewelrySpecialty?: string;
+  currentSoftware?: string;
+  workshopStatus?: string;
+  targetSegment?: string;
 }
 
 interface Stats {
@@ -145,7 +150,9 @@ export default function TelecallerApp() {
   const [adminTab, setAdminTab] = useState<'distribution' | 'callers' | 'dialer'>('distribution');
   const [callerFilter, setCallerFilter] = useState<string>('all'); // 'all', 'unassigned', or username
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>('all');
-  const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('West Delhi Jewellers');
+  const [selectedWestDelhiHub, setSelectedWestDelhiHub] = useState<string>('all');
+  const [selectedPitchAngle, setSelectedPitchAngle] = useState<'karigar' | 'quote' | 'memo' | 'rate_lock' | 'shopify'>('karigar');
   const [viewMode, setViewMode] = useState<'deck' | 'table'>('deck');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -609,7 +616,19 @@ export default function TelecallerApp() {
   const category = currentLead?.category || '';
   const catLower = category.toLowerCase();
   let pitchIntro = `We help ${category} businesses build verified digital catalogs & get direct client inquiries.`;
-  if (catLower.includes('salon') || catLower.includes('spa') || catLower.includes('aesthetic')) {
+  if (catLower.includes('jewel') || catLower.includes('gold') || catLower.includes('diamond')) {
+    if (selectedPitchAngle === 'karigar') {
+      pitchIntro = `We help premier West Delhi jewelry showrooms automate custom karigar workshop tracking from casting to hallmarking, sending automated WhatsApp progress updates to brides.`;
+    } else if (selectedPitchAngle === 'quote') {
+      pitchIntro = `We help West Delhi jewelers generate branded luxury PDF quotations with live 22K/18K gold rates & diamond tiers in 15 seconds directly inside WhatsApp Web.`;
+    } else if (selectedPitchAngle === 'memo') {
+      pitchIntro = `We help West Delhi jewelry houses track VIP bridal home approvals digitally with OTP security receipts and 1-click GST invoice conversion without paper memo risk.`;
+    } else if (selectedPitchAngle === 'rate_lock') {
+      pitchIntro = `We help West Delhi showrooms run Gold Rate-Lock & wedding advance schemes, securing guaranteed high-ticket sales months before wedding season.`;
+    } else {
+      pitchIntro = `We help West Delhi diamond boutiques auto-generate 72 variants on Shopify with live gold pricing and real-time counter inventory sync.`;
+    }
+  } else if (catLower.includes('salon') || catLower.includes('spa') || catLower.includes('aesthetic')) {
     pitchIntro = `We help top luxury salons & aesthetic studios build direct WhatsApp appointment booking systems & digital bridal rate cards without paying aggregator commissions.`;
   } else if (catLower.includes('cafe') || catLower.includes('bistro') || catLower.includes('bakery') || catLower.includes('coffee') || catLower.includes('roaster')) {
     pitchIntro = `We help popular cafes & bistros get direct table reservations & zero-commission QR digital menus without 25% aggregator cuts.`;
@@ -618,11 +637,14 @@ export default function TelecallerApp() {
   }
 
   const waMessage = encodeURIComponent(
-    `Namaste ${ownerName} ji, I was reviewing ${businessName} in ${city}. ${pitchIntro} May I share a 1-minute sample on WhatsApp?`
+    `Namaste ${ownerName} ji, I was reviewing ${businessName} in ${city}. ${pitchIntro} May I share a 1-minute video demo on WhatsApp?`
   );
 
   const getCategoryBadgeClass = (cat: string = '') => {
     const c = cat.toLowerCase();
+    if (c.includes('jewel') || c.includes('gold') || c.includes('diamond')) {
+      return 'bg-gradient-to-r from-amber-950 to-yellow-950 text-amber-200 border-amber-500/70 shadow-sm shadow-amber-500/20 font-bold';
+    }
     if (c.includes('salon') || c.includes('spa') || c.includes('aesthetic')) {
       return 'bg-pink-950/70 text-pink-300 border-pink-700/60';
     }
@@ -658,12 +680,18 @@ export default function TelecallerApp() {
       <header className="sticky top-0 z-40 bg-[#0c1220]/95 backdrop-blur-md border-b border-slate-800/80 px-3 md:px-5 py-2.5">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-emerald-400 flex items-center justify-center font-black text-white text-base shadow-md shadow-sky-500/20 shrink-0">
-              ⚡
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 via-yellow-500 to-amber-300 flex items-center justify-center font-black text-slate-950 text-base shadow-md shadow-amber-500/20 shrink-0">
+              💎
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-slate-100">Swastik Telecaller</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-black text-amber-300 tracking-tight flex items-center gap-1">
+                  <span>JewelERP</span>
+                  <span className="text-slate-100 font-bold">Telecaller</span>
+                </span>
+                <span className="text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm shadow-amber-500/10">
+                  <span>💍</span> West Delhi Jewellers Edition
+                </span>
                 {isSuperAdmin ? (
                   <span className="text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
                     <ShieldCheck className="w-3 h-3 text-purple-400" /> Super Admin
@@ -675,7 +703,7 @@ export default function TelecallerApp() {
                 )}
               </div>
               <p className="text-[11px] text-slate-400">
-                {isSuperAdmin ? 'MongoDB Cloud Atlas • Team Lead Manager' : `@${currentUser?.username} • Assigned Queue`}
+                {isSuperAdmin ? 'West Delhi Jewellery Showrooms & Diamond Merchants • Rajouri • Karol Bagh • Tilak Nagar • Punjabi Bagh' : `@${currentUser?.username} • West Delhi Assigned Queue`}
               </p>
             </div>
           </div>
@@ -792,7 +820,8 @@ export default function TelecallerApp() {
           {/* Industry Category Filter Pills */}
           <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[10px] md:text-[11px] pt-1 border-b border-slate-800/40">
             {[
-              { label: 'All Sectors (300)', value: 'all', icon: '🌐' },
+              { label: 'West Delhi Jewellers (80)', value: 'West Delhi Jewellers', icon: '💍', featured: true },
+              { label: 'All Sectors (380)', value: 'all', icon: '🌐' },
               { label: 'Salons & Spas (50)', value: 'Salon', icon: '💇‍♀️' },
               { label: 'Cafes & Bistros (50)', value: 'Cafe', icon: '☕' },
               { label: 'Steel & PEB (46)', value: 'Steel', icon: '🔩' },
@@ -806,11 +835,16 @@ export default function TelecallerApp() {
                 key={catItem.value}
                 onClick={() => {
                   setActiveCategoryFilter(catItem.value);
+                  setSelectedWestDelhiHub('all');
                   fetchLeads(1);
                 }}
                 className={`px-2.5 py-0.5 rounded-full font-medium transition border whitespace-nowrap flex items-center gap-1 ${
                   activeCategoryFilter === catItem.value
-                    ? 'bg-sky-500/20 text-sky-200 border-sky-400 font-bold shadow-sm shadow-sky-500/20'
+                    ? catItem.featured
+                      ? 'bg-gradient-to-r from-amber-500/30 to-yellow-500/20 text-amber-200 border-amber-400 font-bold shadow-md shadow-amber-500/20 ring-1 ring-amber-400/50'
+                      : 'bg-sky-500/20 text-sky-200 border-sky-400 font-bold shadow-sm shadow-sky-500/20'
+                    : catItem.featured
+                    ? 'bg-amber-950/40 text-amber-300/90 border-amber-800/80 hover:border-amber-600'
                     : 'bg-slate-900/60 text-slate-400 border-slate-800 hover:border-slate-700'
                 }`}
               >
@@ -819,6 +853,40 @@ export default function TelecallerApp() {
               </button>
             ))}
           </div>
+
+          {/* West Delhi Sub-Market Filter Row */}
+          {(activeCategoryFilter === 'West Delhi Jewellers' || activeCategoryFilter === 'all') && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[10px] md:text-[11px] pt-1 border-b border-amber-900/40 bg-amber-950/20 px-2 py-1 rounded-lg">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1 shrink-0">
+                <span>📍</span> West Delhi Hub:
+              </span>
+              {[
+                { label: 'All Hubs (80)', value: 'all' },
+                { label: '✨ Rajouri Garden (20)', value: 'Rajouri Garden' },
+                { label: '🪙 Karol Bagh Bank St (20)', value: 'Karol Bagh' },
+                { label: '👑 Tilak Nagar (15)', value: 'Tilak Nagar' },
+                { label: '💎 Punjabi Bagh (15)', value: 'Punjabi Bagh' },
+                { label: '🏬 Janakpuri & Paschim Vihar (10)', value: 'Janakpuri' }
+              ].map(hub => (
+                <button
+                  key={hub.label}
+                  onClick={() => {
+                    setSelectedWestDelhiHub(hub.value);
+                    const q = hub.value === 'all' ? '' : hub.value;
+                    setSearchQuery(q);
+                    setDebouncedSearch(q);
+                  }}
+                  className={`px-2 py-0.5 rounded-md font-semibold transition border whitespace-nowrap text-[10px] ${
+                    selectedWestDelhiHub === hub.value
+                      ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-sm shadow-amber-500/30'
+                      : 'bg-slate-900/80 text-amber-200/70 border-slate-800 hover:border-amber-700/60'
+                  }`}
+                >
+                  {hub.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Clean Outcome Filter Pills */}
           <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none text-[10px] md:text-[11px] pt-1">
@@ -1074,9 +1142,9 @@ export default function TelecallerApp() {
                     <tr>
                       <th className="p-3 w-8"></th>
                       <th className="p-3">ID</th>
-                      <th className="p-3">Business & Owner</th>
-                      <th className="p-3">Category & Vitals</th>
-                      <th className="p-3">Location</th>
+                      <th className="p-3">Showroom & Owner</th>
+                      <th className="p-3">Jeweller Specialty & Tech Gap</th>
+                      <th className="p-3">West Delhi Hub & Area</th>
                       <th className="p-3">Assigned Caller</th>
                       <th className="p-3">Status</th>
                     </tr>
@@ -1113,26 +1181,61 @@ export default function TelecallerApp() {
                           </td>
                           <td className="p-3 font-bold text-sky-400 whitespace-nowrap">{l.leadId}</td>
                           <td className="p-3">
-                            <div className="font-bold text-slate-200">{l.businessName}</div>
+                            <div className="font-bold text-slate-100 flex items-center gap-1.5 flex-wrap">
+                              {l.category === 'West Delhi Jewellers' && (
+                                <span className="text-amber-400 text-xs" title="West Delhi Jeweller">💎</span>
+                              )}
+                              <span>{l.businessName}</span>
+                            </div>
                             <div className="text-slate-400 text-[11px] mt-0.5">
-                              {l.contactPerson} • <span className="font-mono text-sky-300">{l.phone}</span>
+                              <strong className="text-slate-300">{l.contactPerson}</strong> • <span className="font-mono text-sky-300">{l.phone}</span>
                             </div>
+                            {l.category === 'West Delhi Jewellers' && (
+                              <div className="text-[9px] text-amber-400/80 font-mono mt-0.5">
+                                West Delhi • {l.city}
+                              </div>
+                            )}
                           </td>
                           <td className="p-3">
-                            <div>
-                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border ${getCategoryBadgeClass(l.category)}`}>
-                                {l.category}
-                              </span>
-                            </div>
-                            <div className="text-slate-500 text-[10px] mt-1">
-                              {l.turnover || '₹2 Cr - ₹5 Cr'} • {l.estYear ? `Est. ${l.estYear}` : ''}
-                            </div>
+                            {l.jewelrySpecialty ? (
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md border bg-amber-950/80 text-amber-200 border-amber-600/70 shadow-sm shadow-amber-500/10 block w-fit">
+                                  💍 {l.jewelrySpecialty}
+                                </span>
+                                <div className="text-amber-400/90 text-[10px] font-mono flex items-center gap-1">
+                                  <span>💻</span>
+                                  <span className="truncate max-w-[190px]">{l.currentSoftware || 'Using Tally 9 / Paper Memo'}</span>
+                                </div>
+                                {l.workshopStatus && (
+                                  <div className="text-slate-400 text-[10px] truncate max-w-[190px]">
+                                    🔨 {l.workshopStatus}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div>
+                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border ${getCategoryBadgeClass(l.category)}`}>
+                                  {l.category}
+                                </span>
+                                <div className="text-slate-500 text-[10px] mt-1">
+                                  {l.turnover || '₹2 Cr - ₹5 Cr'} • {l.estYear ? `Est. ${l.estYear}` : ''}
+                                </div>
+                              </div>
+                            )}
                           </td>
                           <td className="p-3">
-                            <div className="text-slate-300">{l.city}</div>
-                            <div className="text-slate-500 text-[10px] truncate max-w-[130px]">
+                            <div className="text-slate-200 font-bold flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
+                              <span>{l.city}</span>
+                            </div>
+                            <div className="text-slate-400 text-[10px] truncate max-w-[140px] mt-0.5">
                               {l.landmark || l.address}
                             </div>
+                            {l.facilityArea && (
+                              <div className="text-slate-500 text-[9px] mt-0.5 truncate max-w-[140px]">
+                                🏢 {l.facilityArea}
+                              </div>
+                            )}
                           </td>
                           <td className="p-3 whitespace-nowrap">
                             {l.assignedTo ? (
@@ -1392,6 +1495,63 @@ export default function TelecallerApp() {
                       </button>
                     </div>
                   </div>
+
+                  {/* JEWELLERY SHOWROOM SPECIFIC VITALS & SOFTWARE GAP */}
+                  {currentLead.jewelrySpecialty && (
+                    <div className="bg-gradient-to-r from-amber-950/40 via-yellow-950/20 to-amber-950/30 border border-amber-600/40 rounded-xl p-3 space-y-2 text-xs shadow-md shadow-amber-950/20">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-amber-300 flex items-center gap-1.5 text-[11px]">
+                          <span>💍</span> {currentLead.jewelrySpecialty}
+                        </span>
+                        <span className="text-[10px] font-mono text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-600/50">
+                          {currentLead.city}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1.5 border-t border-amber-900/40">
+                        <div className="flex items-center gap-1.5 text-slate-300">
+                          <span className="text-amber-400 font-semibold">💻 Current ERP:</span>
+                          <span className="font-mono text-amber-200 truncate">{currentLead.currentSoftware || 'Using Tally 9 & Paper Memo'}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-300">
+                          <span className="text-amber-400 font-semibold">🔨 Workshop:</span>
+                          <span className="truncate">{currentLead.workshopStatus || 'In-House Karigar Unit'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* INTERACTIVE JEWELERP PITCH SELECTOR (DYNAMIC WHATSAPP SCRIPT HOOKS) */}
+                  {(currentLead.category === 'West Delhi Jewellers' || currentLead.jewelrySpecialty) && (
+                    <div className="bg-[#080d19] border border-slate-800 p-2.5 rounded-xl space-y-1.5">
+                      <div className="text-[10px] uppercase font-bold text-amber-400 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-amber-400" />
+                        <span>Select JewelERP Pitch Hook (Click to switch WhatsApp script):</span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[10px]">
+                        {[
+                          { key: 'karigar', label: '🔨 Karigar Workshop', tip: 'Casting to Hallmarking' },
+                          { key: 'quote', label: '💬 WhatsApp Quotes', tip: '15-sec luxury PDF quote' },
+                          { key: 'memo', label: '📋 VIP Home Memos', tip: 'Zero-theft approval slips' },
+                          { key: 'rate_lock', label: '🔒 Rate-Lock Advance', tip: 'Lock 24K wedding gold' },
+                          { key: 'shopify', label: '🛍️ Shopify 72-Variants', tip: 'Showroom sync without clashes' }
+                        ].map(angle => (
+                          <button
+                            key={angle.key}
+                            type="button"
+                            onClick={() => setSelectedPitchAngle(angle.key as any)}
+                            className={`p-1.5 rounded-lg text-left transition border ${
+                              selectedPitchAngle === angle.key
+                                ? 'bg-amber-500/20 text-amber-200 border-amber-400 font-bold shadow-sm'
+                                : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="font-bold truncate">{angle.label}</div>
+                            <div className="text-[9px] text-slate-500 truncate">{angle.tip}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* PRIMARY CALL STRIP: BIG CALL & WHATSAPP BUTTONS */}
                   <div className="grid grid-cols-2 gap-2.5 pt-1">
