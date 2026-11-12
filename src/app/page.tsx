@@ -245,6 +245,10 @@ export default function TelecallerApp() {
           params.set('category', activeCategoryFilter);
         }
 
+        if (selectedWestDelhiHub !== 'all') {
+          params.set('hub', selectedWestDelhiHub);
+        }
+
         if (debouncedSearch.trim()) {
           params.set('search', debouncedSearch.trim());
         }
@@ -253,9 +257,20 @@ export default function TelecallerApp() {
           params.set('assignedTo', callerFilter);
         }
 
+        const statsParams = new URLSearchParams();
+        if (currentUser.role === 'super_admin' && callerFilter !== 'all') {
+          statsParams.set('assignedTo', callerFilter);
+        }
+        if (activeCategoryFilter !== 'all') {
+          statsParams.set('category', activeCategoryFilter);
+        }
+        if (selectedWestDelhiHub !== 'all') {
+          statsParams.set('hub', selectedWestDelhiHub);
+        }
+
         const [leadsRes, statsRes] = await Promise.all([
           fetch(`/api/leads?${params.toString()}`),
-          fetch(`/api/stats${currentUser.role === 'super_admin' && callerFilter !== 'all' ? `?assignedTo=${encodeURIComponent(callerFilter)}` : ''}`)
+          fetch(`/api/stats?${statsParams.toString()}`)
         ]);
 
         const leadsData = await leadsRes.json();
@@ -283,7 +298,7 @@ export default function TelecallerApp() {
         setLoading(false);
       }
     },
-    [currentUser, activeStatusFilter, activeCategoryFilter, debouncedSearch, callerFilter, pagination.limit]
+    [currentUser, activeStatusFilter, activeCategoryFilter, selectedWestDelhiHub, debouncedSearch, callerFilter, pagination.limit]
   );
 
   // 3. Load Callers for Super Admin
@@ -307,7 +322,7 @@ export default function TelecallerApp() {
         loadCallers();
       }
     }
-  }, [currentUser, activeStatusFilter, debouncedSearch, callerFilter]);
+  }, [currentUser, activeStatusFilter, activeCategoryFilter, selectedWestDelhiHub, debouncedSearch, callerFilter]);
 
   const handleLogout = async () => {
     try {
@@ -567,6 +582,7 @@ export default function TelecallerApp() {
       params.set('limit', '1000'); // fetch all matching leads up to 1000
       if (activeStatusFilter !== 'all') params.set('status', activeStatusFilter);
       if (activeCategoryFilter !== 'all') params.set('category', activeCategoryFilter);
+      if (selectedWestDelhiHub !== 'all') params.set('hub', selectedWestDelhiHub);
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
       if (currentUser?.role === 'super_admin' && callerFilter !== 'all') {
         params.set('assignedTo', callerFilter);
@@ -836,7 +852,6 @@ export default function TelecallerApp() {
                 onClick={() => {
                   setActiveCategoryFilter(catItem.value);
                   setSelectedWestDelhiHub('all');
-                  fetchLeads(1);
                 }}
                 className={`px-2.5 py-0.5 rounded-full font-medium transition border whitespace-nowrap flex items-center gap-1 ${
                   activeCategoryFilter === catItem.value
@@ -861,20 +876,18 @@ export default function TelecallerApp() {
                 <span>📍</span> West Delhi Hub:
               </span>
               {[
-                { label: 'All Hubs (80)', value: 'all' },
+                { label: 'All West Delhi (80)', value: 'all' },
                 { label: '✨ Rajouri Garden (20)', value: 'Rajouri Garden' },
                 { label: '🪙 Karol Bagh Bank St (20)', value: 'Karol Bagh' },
                 { label: '👑 Tilak Nagar (15)', value: 'Tilak Nagar' },
                 { label: '💎 Punjabi Bagh (15)', value: 'Punjabi Bagh' },
-                { label: '🏬 Janakpuri & Paschim Vihar (10)', value: 'Janakpuri' }
+                { label: '🏬 Janakpuri (5)', value: 'Janakpuri' },
+                { label: '🏛️ Paschim Vihar (5)', value: 'Paschim Vihar' }
               ].map(hub => (
                 <button
-                  key={hub.label}
+                  key={hub.value}
                   onClick={() => {
                     setSelectedWestDelhiHub(hub.value);
-                    const q = hub.value === 'all' ? '' : hub.value;
-                    setSearchQuery(q);
-                    setDebouncedSearch(q);
                   }}
                   className={`px-2 py-0.5 rounded-md font-semibold transition border whitespace-nowrap text-[10px] ${
                     selectedWestDelhiHub === hub.value
@@ -1783,8 +1796,25 @@ export default function TelecallerApp() {
                               </div>
                             </td>
                             <td className="p-3">
-                              <div className="text-slate-300">{l.category}</div>
-                              <div className="text-slate-500 text-[10px]">{l.city}</div>
+                              {l.jewelrySpecialty ? (
+                                <div className="space-y-0.5">
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-200 border border-amber-600/70 inline-block shadow-sm">
+                                    💍 {l.jewelrySpecialty}
+                                  </span>
+                                  <div className="text-amber-400/90 text-[10px] font-mono truncate max-w-[170px]">
+                                    {l.currentSoftware || 'Tally 9 / Paper Memo'}
+                                  </div>
+                                  <div className="text-slate-400 text-[9px] flex items-center gap-1">
+                                    <MapPin className="w-2.5 h-2.5 text-rose-400" />
+                                    <span>{l.city}</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div>
+                                  <div className="text-slate-300">{l.category}</div>
+                                  <div className="text-slate-500 text-[10px]">{l.city}</div>
+                                </div>
+                              )}
                             </td>
                             <td className="p-3">
                               {l.status === 'Interested' ? (

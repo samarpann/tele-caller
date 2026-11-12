@@ -34,6 +34,8 @@ function getMemoryLeads(): Lead[] {
 export async function getAllLeads(filters?: {
   status?: string;
   category?: string;
+  hub?: string;
+  city?: string;
   search?: string;
   assignedTo?: string; // specific username, 'unassigned', or 'all'
   page?: number;
@@ -88,6 +90,12 @@ export async function getAllLeads(filters?: {
     // 3. Category filter
     if (filters?.category && filters.category !== 'all') {
       query.category = { $regex: new RegExp(filters.category, 'i') };
+    }
+
+    // 3b. Hub / City filter (e.g. Rajouri Garden, Karol Bagh)
+    const hubFilter = filters?.hub || filters?.city;
+    if (hubFilter && hubFilter !== 'all') {
+      query.city = { $regex: new RegExp(hubFilter, 'i') };
     }
 
     // 4. Server-side Search filter
@@ -503,7 +511,7 @@ export async function addLeads(
   }
 }
 
-export async function getStats(assignedTo?: string) {
+export async function getStats(assignedTo?: string, category?: string, hub?: string) {
   try {
     const { db } = await connectToDatabase();
     const collection = db.collection('leads');
@@ -512,19 +520,33 @@ export async function getStats(assignedTo?: string) {
     if (assignedTo && assignedTo !== 'all') {
       matchQuery.assignedTo = { $regex: new RegExp(`^${assignedTo}$`, 'i') };
     }
+    if (category && category !== 'all') {
+      matchQuery.category = { $regex: new RegExp(category, 'i') };
+    }
+    if (hub && hub !== 'all') {
+      matchQuery.city = { $regex: new RegExp(hub, 'i') };
+    }
+
+    const unassignedQuery: any = {
+      $or: [
+        { assignedTo: { $exists: false } },
+        { assignedTo: null },
+        { assignedTo: '' }
+      ]
+    };
+    if (category && category !== 'all') {
+      unassignedQuery.category = { $regex: new RegExp(category, 'i') };
+    }
+    if (hub && hub !== 'all') {
+      unassignedQuery.city = { $regex: new RegExp(hub, 'i') };
+    }
 
     const [statusCounts, unassignedCount, totalCount] = await Promise.all([
       collection.aggregate([
         { $match: matchQuery },
         { $group: { _id: '$status', count: { $sum: 1 } } }
       ]).toArray(),
-      collection.countDocuments({
-        $or: [
-          { assignedTo: { $exists: false } },
-          { assignedTo: null },
-          { assignedTo: '' }
-        ]
-      }),
+      collection.countDocuments(unassignedQuery),
       collection.countDocuments(matchQuery)
     ]);
 
@@ -564,6 +586,12 @@ export async function getStats(assignedTo?: string) {
   let leads = getMemoryLeads();
   if (assignedTo && assignedTo !== 'all') {
     leads = leads.filter(l => l.assignedTo?.toLowerCase() === assignedTo.toLowerCase());
+  }
+  if (category && category !== 'all') {
+    leads = leads.filter(l => l.category?.toLowerCase().includes(category.toLowerCase()));
+  }
+  if (hub && hub !== 'all') {
+    leads = leads.filter(l => l.city?.toLowerCase().includes(hub.toLowerCase()));
   }
 
   let interested = 0;
@@ -715,6 +743,12 @@ function getLocalAllLeads(filters?: any): PaginationResult<Lead> {
   // 3. Filter by category
   if (filters?.category && filters.category !== 'all') {
     leads = leads.filter(l => l.category?.toLowerCase().includes(filters.category.toLowerCase()));
+  }
+
+  // 3b. Filter by hub / city
+  const hubFilter = filters?.hub || filters?.city;
+  if (hubFilter && hubFilter !== 'all') {
+    leads = leads.filter(l => l.city?.toLowerCase().includes(hubFilter.toLowerCase()));
   }
 
   // 4. Server-side Search filter

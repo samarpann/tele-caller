@@ -8,13 +8,15 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
 
     let assignedTo = searchParams.get('assignedTo') || undefined;
+    const category = searchParams.get('category') || undefined;
+    const hub = searchParams.get('hub') || undefined;
 
     // Caller only sees their own stats
     if (session && session.role === 'caller') {
       assignedTo = session.username;
     }
 
-    const stats = await getStats(assignedTo);
+    const stats = await getStats(assignedTo, category, hub);
 
     let teamPerformance: any[] = [];
     if (!session || session.role === 'super_admin') {

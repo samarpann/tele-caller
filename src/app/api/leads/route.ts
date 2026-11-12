@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status') || undefined;
     const category = searchParams.get('category') || undefined;
+    const hub = searchParams.get('hub') || undefined;
     const search = searchParams.get('search') || undefined;
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '20', 10);
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
     const result = await getAllLeads({
       status,
       category,
+      hub,
       search,
       assignedTo,
       page,
