@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Swastik Telecaller Pro',
-  description: 'High-Converting B2B Mobile Telecaller Deck & Lead Management',
+  title: 'JewelERP Telecaller | West Delhi Jewellers Edition',
+  description: 'JewelERP Telecaller CRM & Sales Dialer for West Delhi Showrooms & Diamond Merchants',
 };
 
 export const viewport: Viewport = {
