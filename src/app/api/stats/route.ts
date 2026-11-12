@@ -27,11 +27,15 @@ export async function GET(req: NextRequest) {
 
     let dbName = 'unknown';
     let totalInDb = 0;
+    let uriMasked = '';
+    let hosts: any = [];
     try {
       const { connectToDatabase } = await import('@/lib/mongodb');
-      const { db } = await connectToDatabase();
+      const { client, db } = await connectToDatabase();
       dbName = db.databaseName;
       totalInDb = await db.collection('leads').countDocuments();
+      uriMasked = (process.env.MONGODB_URI || 'default fallback').replace(/:([^@]+)@/, ':***@');
+      hosts = client.options.hosts;
     } catch (e: any) {
       dbName = 'error: ' + e.message;
     }
@@ -40,7 +44,7 @@ export async function GET(req: NextRequest) {
       success: true,
       stats,
       teamPerformance,
-      dbInfo: { dbName, totalInDb }
+      dbInfo: { dbName, totalInDb, uriMasked, hosts }
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
