@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
 import { INITIAL_LEADS } from './initial-leads';
+import { WEST_DELHI_JEWELLERS } from './west-delhi-jewellers';
 import { FALLBACK_USERS } from './users';
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://samarpansingh17_db_user:TZCYzijR78tJz3CN@cluster0.yasfylo.mongodb.net/swastik_telecaller?retryWrites=true&w=majority&appName=Cluster0';
@@ -87,6 +88,21 @@ async function initDatabase(db: Db) {
         await leadsCol.insertMany(leadsToSeed as any);
         console.log(`✅ Seeded ${leadsToSeed.length} leads into MongoDB Atlas.`);
       }
+    }
+
+    // Ensure 80 West Delhi Jewellers are seeded if not present
+    const jewellersCount = await leadsCol.countDocuments({ category: 'West Delhi Jewellers' });
+    if (jewellersCount === 0 && WEST_DELHI_JEWELLERS.length > 0) {
+      console.log('Seeding 80 West Delhi Jewellers into MongoDB...');
+      const bulkOps = WEST_DELHI_JEWELLERS.map(l => ({
+        updateOne: {
+          filter: { leadId: l.leadId },
+          update: { $set: l },
+          upsert: true
+        }
+      }));
+      await leadsCol.bulkWrite(bulkOps);
+      console.log('✅ Seeded 80 West Delhi Jewellers into MongoDB Atlas.');
     }
 
     const userCount = await usersCol.countDocuments();
