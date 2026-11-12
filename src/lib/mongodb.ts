@@ -90,19 +90,41 @@ async function initDatabase(db: Db) {
       }
     }
 
-    // Ensure 80 West Delhi Jewellers are seeded if not present
+    // Ensure 180 West Delhi Jewellers are seeded if not present
     const jewellersCount = await leadsCol.countDocuments({ category: 'West Delhi Jewellers' });
     if (jewellersCount === 0 && WEST_DELHI_JEWELLERS.length > 0) {
-      console.log('Seeding 80 West Delhi Jewellers into MongoDB...');
-      const bulkOps = WEST_DELHI_JEWELLERS.map(l => ({
-        updateOne: {
-          filter: { leadId: l.leadId },
-          update: { $set: l },
-          upsert: true
-        }
-      }));
+      console.log('Seeding West Delhi Jewellers into MongoDB...');
+      const bulkOps = WEST_DELHI_JEWELLERS.map(l => {
+        const {
+          assignedTo,
+          assignedToName,
+          assignedAt,
+          status,
+          notes,
+          callbackTime,
+          ...staticFields
+        } = l;
+
+        return {
+          updateOne: {
+            filter: { leadId: l.leadId },
+            update: {
+              $set: staticFields,
+              $setOnInsert: {
+                assignedTo: assignedTo || '',
+                assignedToName: assignedToName || '',
+                assignedAt: assignedAt || new Date().toISOString(),
+                status: status || 'Pending',
+                notes: notes || '',
+                callbackTime: callbackTime || ''
+              }
+            },
+            upsert: true
+          }
+        };
+      });
       await leadsCol.bulkWrite(bulkOps);
-      console.log('✅ Seeded 80 West Delhi Jewellers into MongoDB Atlas.');
+      console.log('✅ Seeded West Delhi Jewellers into MongoDB Atlas.');
     }
 
     const userCount = await usersCol.countDocuments();

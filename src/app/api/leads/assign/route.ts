@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { assignLeads, unassignLeads, autoDistributeLeads } from '@/lib/db';
+import { assignLeads, unassignLeads, autoDistributeLeads, resetLeadStatus } from '@/lib/db';
 import { getUserByUsername, getAllUsers, getSessionUser } from '@/lib/users';
 
 export async function POST(req: NextRequest) {
@@ -53,7 +53,21 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 3. Assign single or bulk to specific caller
+    // 3. Reset status back to Pending (Undo outcome)
+    if (mode === 'reset-status') {
+      if (!Array.isArray(leadIds) || leadIds.length === 0) {
+        return NextResponse.json({ success: false, error: 'No lead IDs provided to reset' }, { status: 400 });
+      }
+
+      const res = await resetLeadStatus(leadIds);
+      return NextResponse.json({
+        success: true,
+        message: `Successfully reset ${res.updatedCount} leads to Pending`,
+        resetCount: res.updatedCount
+      });
+    }
+
+    // 4. Assign single or bulk to specific caller
     if (!username) {
       return NextResponse.json({ success: false, error: 'Target caller username is required' }, { status: 400 });
     }

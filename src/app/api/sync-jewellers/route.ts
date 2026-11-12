@@ -13,13 +13,35 @@ export async function GET(req: NextRequest) {
     const { db } = await connectToDatabase();
     const collection = db.collection('leads');
 
-    const bulkOps = WEST_DELHI_JEWELLERS.map(l => ({
-      updateOne: {
-        filter: { leadId: l.leadId },
-        update: { $set: l },
-        upsert: true
-      }
-    }));
+    const bulkOps = WEST_DELHI_JEWELLERS.map(l => {
+      const {
+        assignedTo,
+        assignedToName,
+        assignedAt,
+        status,
+        notes,
+        callbackTime,
+        ...staticFields
+      } = l;
+
+      return {
+        updateOne: {
+          filter: { leadId: l.leadId },
+          update: {
+            $set: staticFields,
+            $setOnInsert: {
+              assignedTo: assignedTo || '',
+              assignedToName: assignedToName || '',
+              assignedAt: assignedAt || new Date().toISOString(),
+              status: status || 'Pending',
+              notes: notes || '',
+              callbackTime: callbackTime || ''
+            }
+          },
+          upsert: true
+        }
+      };
+    });
 
     const res = await collection.bulkWrite(bulkOps);
     const totalCount = await collection.countDocuments();

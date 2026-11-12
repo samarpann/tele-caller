@@ -42,7 +42,9 @@ import {
   SlidersHorizontal,
   ChevronDown,
   ChevronUp,
-  UserCheck
+  UserCheck,
+  RotateCcw,
+  UserMinus
 } from 'lucide-react';
 
 interface CurrentUser {
@@ -186,6 +188,18 @@ export default function TelecallerApp() {
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [callbackDateTime, setCallbackDateTime] = useState('');
+
+  // Undo accidental outcome state
+  interface LastAction {
+    leadId: string;
+    leadDbId: string;
+    businessName: string;
+    previousStatus: string;
+    newStatus: string;
+    notes?: string;
+  }
+  const [lastAction, setLastAction] = useState<LastAction | null>(null);
+  const undoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [uploading, setUploading] = useState(false);
   const [importMode, setImportMode] = useState<'append' | 'replace'>('append');
@@ -343,24 +357,82 @@ export default function TelecallerApp() {
     callbackTime?: string
   ) => {
     try {
+      const targetLead = leads.find(l => l.id === id || l.leadId === id);
+      const prevStatus = targetLead?.status || 'Pending';
+
       setLeads(prev =>
         prev.map(l =>
-          l.id === id ? { ...l, status, notes: notes || l.notes, callbackTime: callbackTime || l.callbackTime } : l
+          l.id === id || l.leadId === id
+            ? {
+                ...l,
+                status,
+                notes: notes !== undefined ? notes : l.notes,
+                callbackTime: callbackTime !== undefined ? callbackTime : l.callbackTime
+              }
+            : l
         )
       );
+
+      // Track lastAction for 1-click Undo toast if status changed away from Pending
+      if (status !== 'Pending') {
+        setLastAction({
+          leadId: targetLead?.leadId || id,
+          leadDbId: id,
+          businessName: targetLead?.businessName || 'Lead',
+          previousStatus: prevStatus,
+          newStatus: status,
+          notes: notes
+        });
+        if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+        undoTimeoutRef.current = setTimeout(() => {
+          setLastAction(null);
+        }, 12000);
+      } else {
+        setLastAction(null);
+      }
 
       await fetch(`/api/leads/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, notes, callbackTime })
+        body: JSON.stringify({
+          status,
+          notes: notes !== undefined ? notes : '',
+          callbackTime: callbackTime !== undefined ? callbackTime : ''
+        })
       });
 
-      // Refresh stats
-      const statsRes = await fetch('/api/stats');
+      // Refresh stats with current filters
+      const statsParams = new URLSearchParams();
+      if (currentUser?.role === 'super_admin' && callerFilter !== 'all') {
+        statsParams.set('assignedTo', callerFilter);
+      }
+      if (activeCategoryFilter !== 'all') {
+        statsParams.set('category', activeCategoryFilter);
+      }
+      if (selectedWestDelhiHub !== 'all') {
+        statsParams.set('hub', selectedWestDelhiHub);
+      }
+
+      const statsRes = await fetch(`/api/stats?${statsParams.toString()}`);
       const statsData = await statsRes.json();
       if (statsData.success) setStats(statsData.stats);
     } catch (err) {
       console.error('Failed to update lead:', err);
+    }
+  };
+
+  // Instant Undo handler for accidental clicks
+  const handleUndo = async (leadDbId: string) => {
+    try {
+      await updateStatus(leadDbId, 'Pending', '', '');
+      setLastAction(null);
+      const foundIdx = leads.findIndex(l => l.id === leadDbId || l.leadId === leadDbId);
+      if (foundIdx !== -1) {
+        setCurrentIndex(foundIdx);
+        setShowFullDetails(false);
+      }
+    } catch (err) {
+      console.error('Failed to undo status:', err);
     }
   };
 
@@ -448,20 +520,28 @@ export default function TelecallerApp() {
     }
   };
 
-  // Bulk Assign
+  // Bulk Assign / Unassign
   const handleBulkAssign = async () => {
     if (selectedLeadIds.size === 0 || !targetAssignCaller) return;
 
     try {
       setAssigning(true);
+      const isUnassign = targetAssignCaller === '__UNASSIGN__';
       const res = await fetch('/api/leads/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'bulk',
-          leadIds: Array.from(selectedLeadIds),
-          username: targetAssignCaller
-        })
+        body: JSON.stringify(
+          isUnassign
+            ? {
+                mode: 'unassign',
+                leadIds: Array.from(selectedLeadIds)
+              }
+            : {
+                mode: 'bulk',
+                leadIds: Array.from(selectedLeadIds),
+                username: targetAssignCaller
+              }
+        )
       });
 
       const data = await res.json();
@@ -469,12 +549,96 @@ export default function TelecallerApp() {
         alert(data.message);
         setSelectedLeadIds(new Set());
         setIsAssignModalOpen(false);
+        setTargetAssignCaller('');
         await Promise.all([fetchLeads(pagination.page), loadCallers()]);
       } else {
         alert(`Error: ${data.error}`);
       }
     } catch {
       alert('Failed to assign leads.');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  // Direct Bulk Unassign
+  const handleBulkUnassign = async () => {
+    if (selectedLeadIds.size === 0) return;
+    if (!confirm(`Unassign ${selectedLeadIds.size} selected leads? They will show up as Unassigned.`)) return;
+
+    try {
+      setAssigning(true);
+      const res = await fetch('/api/leads/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'unassign',
+          leadIds: Array.from(selectedLeadIds)
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        setSelectedLeadIds(new Set());
+        await Promise.all([fetchLeads(pagination.page), loadCallers()]);
+      } else {
+        alert(`Error: ${data.error}`);
+      }
+    } catch {
+      alert('Failed to unassign leads.');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  // Single Lead Unassign
+  const handleSingleUnassign = async (leadId: string) => {
+    if (!confirm('Unassign this lead from caller?')) return;
+    try {
+      const res = await fetch('/api/leads/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'unassign',
+          leadIds: [leadId]
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await Promise.all([fetchLeads(pagination.page), loadCallers()]);
+      }
+    } catch {
+      alert('Failed to unassign lead.');
+    }
+  };
+
+  // Bulk Reset Status to Pending (Undo accidental outcomes)
+  const handleBulkResetStatus = async () => {
+    if (selectedLeadIds.size === 0) return;
+    if (!confirm(`Reset call outcome back to Pending for ${selectedLeadIds.size} selected leads?`)) return;
+
+    try {
+      setAssigning(true);
+      const res = await fetch('/api/leads/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'reset-status',
+          leadIds: Array.from(selectedLeadIds)
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        setSelectedLeadIds(new Set());
+        await Promise.all([fetchLeads(pagination.page), loadCallers()]);
+      } else {
+        alert(`Error: ${data.error}`);
+      }
+    } catch {
+      alert('Failed to reset lead status.');
     } finally {
       setAssigning(false);
     }
@@ -1109,13 +1273,35 @@ export default function TelecallerApp() {
                 </div>
 
                 {selectedLeadIds.size > 0 && (
-                  <button
-                    onClick={() => setIsAssignModalOpen(true)}
-                    className="py-1.5 px-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/25 active:scale-95 transition"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    <span>Assign ({selectedLeadIds.size}) Leads ➔</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setIsAssignModalOpen(true)}
+                      className="py-1.5 px-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/25 active:scale-95 transition"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>Assign ({selectedLeadIds.size}) Leads ➔</span>
+                    </button>
+
+                    <button
+                      onClick={handleBulkUnassign}
+                      disabled={assigning}
+                      className="py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-rose-500/60 text-slate-300 hover:text-rose-300 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 disabled:opacity-50"
+                      title="Unassign selected leads so they show up under Unassigned"
+                    >
+                      <UserMinus className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Unassign ({selectedLeadIds.size})</span>
+                    </button>
+
+                    <button
+                      onClick={handleBulkResetStatus}
+                      disabled={assigning}
+                      className="py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-amber-500/60 text-slate-300 hover:text-amber-300 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 disabled:opacity-50"
+                      title="Reset call outcome back to Pending for selected leads (Undo accidental outcomes)"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Reset to Pending ({selectedLeadIds.size})</span>
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1257,35 +1443,60 @@ export default function TelecallerApp() {
                                 <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
                                 <span className="font-semibold text-emerald-300">{l.assignedToName}</span>
                                 <span className="text-[10px] text-slate-500 font-mono">(@{l.assignedTo})</span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSingleUnassign(l.id);
+                                  }}
+                                  className="ml-1 p-0.5 rounded hover:bg-slate-800 text-slate-500 hover:text-rose-400 transition"
+                                  title={`Unassign lead from ${l.assignedToName}`}
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
                               </div>
                             ) : (
-                              <span className="text-slate-500 text-[10px] bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                              <span className="text-amber-400/90 text-[10px] bg-amber-950/40 px-2 py-0.5 rounded border border-amber-600/40 font-semibold">
                                 Unassigned
                               </span>
                             )}
                           </td>
                           <td className="p-3 whitespace-nowrap">
-                            {l.status === 'Interested' ? (
-                              <span className="font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30">
-                                Interested
-                              </span>
-                            ) : l.status === 'Callback' ? (
-                              <span className="font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-500/30">
-                                Callback
-                              </span>
-                            ) : l.status === 'No Answer' ? (
-                              <span className="font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
-                                No Answer
-                              </span>
-                            ) : l.status === 'Not Interested' ? (
-                              <span className="font-medium text-rose-400 bg-rose-950/60 px-2 py-0.5 rounded border border-rose-500/30">
-                                Rejected
-                              </span>
-                            ) : (
-                              <span className="text-slate-500 bg-slate-900 px-2 py-0.5 rounded">
-                                Pending
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1.5">
+                              {l.status === 'Interested' ? (
+                                <span className="font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30">
+                                  Interested
+                                </span>
+                              ) : l.status === 'Callback' ? (
+                                <span className="font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-500/30">
+                                  Callback
+                                </span>
+                              ) : l.status === 'No Answer' ? (
+                                <span className="font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                                  No Answer
+                                </span>
+                              ) : l.status === 'Not Interested' ? (
+                                <span className="font-medium text-rose-400 bg-rose-950/60 px-2 py-0.5 rounded border border-rose-500/30">
+                                  Rejected
+                                </span>
+                              ) : (
+                                <span className="text-slate-500 bg-slate-900 px-2 py-0.5 rounded">
+                                  Pending
+                                </span>
+                              )}
+
+                              {l.status && l.status !== 'Pending' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateStatus(l.id, 'Pending', '', '');
+                                  }}
+                                  className="p-1 rounded bg-slate-800/80 hover:bg-amber-950 border border-slate-700 hover:border-amber-500 text-slate-400 hover:text-amber-300 transition"
+                                  title="Accidentally marked? Click to undo and reset status back to Pending"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -1688,7 +1899,41 @@ export default function TelecallerApp() {
                   </div>
 
                   {/* OUTCOME BUTTONS (DESKTOP) */}
-                  <div className="space-y-1.5 pt-1">
+                  <div className="space-y-2 pt-1">
+                    {/* Status Banner with 1-Click Undo if already marked */}
+                    {currentLead.status && currentLead.status !== 'Pending' && (
+                      <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-950/40 via-slate-900 to-amber-950/40 border border-amber-500/40 flex flex-wrap items-center justify-between gap-2 shadow-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300/80">Current Status:</span>
+                          <span className={`font-bold text-xs px-2 py-0.5 rounded-md border ${
+                            currentLead.status === 'Interested'
+                              ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
+                              : currentLead.status === 'Callback'
+                              ? 'bg-amber-950/80 text-amber-300 border-amber-500/50'
+                              : currentLead.status === 'No Answer'
+                              ? 'bg-slate-800 text-slate-300 border-slate-700'
+                              : 'bg-rose-950/80 text-rose-300 border-rose-500/50'
+                          }`}>
+                            {currentLead.status}
+                          </span>
+                          {currentLead.notes && (
+                            <span className="text-[11px] text-slate-400 italic truncate max-w-[130px]" title={currentLead.notes}>
+                              "{currentLead.notes}"
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => updateStatus(currentLead.id, 'Pending', '', '')}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/60 text-amber-300 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-sm"
+                          title="Accidentally marked? Click to undo and reset status back to Pending"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Undo / Reset to Pending</span>
+                        </button>
+                      </div>
+                    )}
+
                     <div className="text-[10px] font-bold text-center uppercase tracking-wider text-slate-500">
                       Record Call Outcome
                     </div>
@@ -1817,18 +2062,33 @@ export default function TelecallerApp() {
                                 </div>
                               )}
                             </td>
-                            <td className="p-3">
-                              {l.status === 'Interested' ? (
-                                <span className="font-bold text-emerald-400">Interested</span>
-                              ) : l.status === 'Callback' ? (
-                                <span className="font-bold text-amber-400">Callback</span>
-                              ) : l.status === 'No Answer' ? (
-                                <span className="font-medium text-slate-400">No Answer</span>
-                              ) : l.status === 'Not Interested' ? (
-                                <span className="font-medium text-rose-400">Rejected</span>
-                              ) : (
-                                <span className="text-slate-500">Pending</span>
-                              )}
+                            <td className="p-3 whitespace-nowrap">
+                              <div className="flex items-center gap-1.5">
+                                {l.status === 'Interested' ? (
+                                  <span className="font-bold text-emerald-400">Interested</span>
+                                ) : l.status === 'Callback' ? (
+                                  <span className="font-bold text-amber-400">Callback</span>
+                                ) : l.status === 'No Answer' ? (
+                                  <span className="font-medium text-slate-400">No Answer</span>
+                                ) : l.status === 'Not Interested' ? (
+                                  <span className="font-medium text-rose-400">Rejected</span>
+                                ) : (
+                                  <span className="text-slate-500">Pending</span>
+                                )}
+
+                                {l.status && l.status !== 'Pending' && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      updateStatus(l.id, 'Pending', '', '');
+                                    }}
+                                    className="p-1 rounded bg-slate-800 hover:bg-amber-950 border border-slate-700 hover:border-amber-500 text-slate-400 hover:text-amber-300 transition"
+                                    title="Undo status back to Pending"
+                                  >
+                                    <RotateCcw className="w-2.5 h-2.5" />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1882,6 +2142,22 @@ export default function TelecallerApp() {
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>
+
+          {/* Quick Undo Bar on Mobile if status marked */}
+          {currentLead && currentLead.status && currentLead.status !== 'Pending' && (
+            <div className="flex items-center justify-between p-2 rounded-xl bg-amber-950/80 border border-amber-500/60 text-amber-200 text-xs">
+              <span className="text-[11px] font-semibold">
+                Status: <strong className="text-white underline">{currentLead.status}</strong>
+              </span>
+              <button
+                onClick={() => updateStatus(currentLead.id, 'Pending', '', '')}
+                className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] flex items-center gap-1 active:scale-95 shadow-sm"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Undo to Pending</span>
+              </button>
+            </div>
+          )}
 
           {/* Quick Outcome Thumb Buttons */}
           <div className="grid grid-cols-4 gap-1.5">
@@ -2019,6 +2295,9 @@ export default function TelecallerApp() {
                 className="w-full bg-[#080d19] border border-slate-700 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
               >
                 <option value="">-- Choose a Sales Caller --</option>
+                <option value="__UNASSIGN__" className="text-amber-400 font-bold bg-amber-950/80">
+                  ⚠️ -- Unassign Selected Leads (Remove Caller) --
+                </option>
                 {callersList.filter(c => c.role === 'caller').map(c => (
                   <option key={c.username} value={c.username}>
                     {c.name} (@{c.username}) - {c.stats.totalAssigned} currently assigned
@@ -2037,9 +2316,17 @@ export default function TelecallerApp() {
               <button
                 onClick={handleBulkAssign}
                 disabled={assigning || !targetAssignCaller}
-                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold disabled:opacity-50"
+                className={`px-4 py-2 rounded-lg text-white text-xs font-bold disabled:opacity-50 ${
+                  targetAssignCaller === '__UNASSIGN__'
+                    ? 'bg-rose-600 hover:bg-rose-500'
+                    : 'bg-emerald-600 hover:bg-emerald-500'
+                }`}
               >
-                {assigning ? 'Assigning...' : 'Confirm Assignment'}
+                {assigning
+                  ? 'Processing...'
+                  : targetAssignCaller === '__UNASSIGN__'
+                  ? 'Confirm Unassign'
+                  : 'Confirm Assignment'}
               </button>
             </div>
           </div>
@@ -2179,6 +2466,45 @@ export default function TelecallerApp() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= FLOATING UNDO TOAST ================= */}
+      {lastAction && (
+        <div className="fixed bottom-20 md:bottom-8 right-4 md:right-8 z-50 animate-in fade-in slide-in-from-bottom-5 duration-200">
+          <div className="bg-[#0b1329] border border-amber-500/60 rounded-2xl p-3.5 shadow-2xl shadow-black/80 flex items-center gap-3 text-xs max-w-md backdrop-blur-md">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+            <div className="space-y-0.5 min-w-0">
+              <div className="text-slate-200 truncate">
+                Marked <strong className="text-white font-bold">{lastAction.businessName}</strong> as{' '}
+                <span className={`font-bold px-1.5 py-0.2 rounded text-[11px] ${
+                  lastAction.newStatus === 'Interested'
+                    ? 'text-emerald-300 bg-emerald-950/80 border border-emerald-500/40'
+                    : lastAction.newStatus === 'Callback'
+                    ? 'text-amber-300 bg-amber-950/80 border border-amber-500/40'
+                    : lastAction.newStatus === 'No Answer'
+                    ? 'text-slate-300 bg-slate-800'
+                    : 'text-rose-300 bg-rose-950/80 border border-rose-500/40'
+                }`}>
+                  {lastAction.newStatus}
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-400">Accidental click? You can undo immediately.</div>
+            </div>
+            <button
+              onClick={() => handleUndo(lastAction.leadDbId)}
+              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1 shadow-lg shadow-amber-500/30 active:scale-95 transition shrink-0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Undo</span>
+            </button>
+            <button
+              onClick={() => setLastAction(null)}
+              className="text-slate-400 hover:text-slate-200 p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}

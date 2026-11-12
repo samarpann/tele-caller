@@ -367,6 +367,46 @@ export async function unassignLeads(leadIds: string[]): Promise<{ success: boole
   return { success: true, updatedCount: count };
 }
 
+export async function resetLeadStatus(leadIds: string[]): Promise<{ success: boolean; updatedCount: number }> {
+  const idSet = new Set(leadIds.map(id => id.trim().toLowerCase()));
+  let count = 0;
+
+  try {
+    const { db } = await connectToDatabase();
+    const res = await db.collection('leads').updateMany(
+      {
+        $or: [
+          { id: { $in: leadIds.map(id => id.trim()) } },
+          { leadId: { $in: leadIds.map(id => id.trim()) } }
+        ]
+      },
+      {
+        $set: {
+          status: 'Pending',
+          notes: '',
+          callbackTime: '',
+          updatedAt: new Date().toISOString()
+        }
+      }
+    );
+    count = res.modifiedCount;
+  } catch (err: any) {
+    console.error('Mongo error in resetLeadStatus', err);
+  }
+
+  inMemoryLeads.forEach(l => {
+    if (idSet.has(l.leadId.toLowerCase()) || (l.id && idSet.has(l.id.toLowerCase()))) {
+      l.status = 'Pending';
+      l.notes = '';
+      l.callbackTime = '';
+      l.updatedAt = new Date().toISOString();
+      if (!count) count++;
+    }
+  });
+
+  return { success: true, updatedCount: count };
+}
+
 export async function autoDistributeLeads(
   callers: { username: string; name: string }[],
   options?: { unassignedOnly?: boolean; category?: string }
