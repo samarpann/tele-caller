@@ -836,8 +836,8 @@ export default function TelecallerApp() {
           {/* Industry Category Filter Pills */}
           <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[10px] md:text-[11px] pt-1 border-b border-slate-800/40">
             {[
-              { label: 'West Delhi Jewellers (80)', value: 'West Delhi Jewellers', icon: '💍', featured: true },
-              { label: 'All Sectors (380)', value: 'all', icon: '🌐' },
+              { label: 'West Delhi Jewellers (180)', value: 'West Delhi Jewellers', icon: '💍', featured: true },
+              { label: 'All Sectors (480)', value: 'all', icon: '🌐' },
               { label: 'Salons & Spas (50)', value: 'Salon', icon: '💇‍♀️' },
               { label: 'Cafes & Bistros (50)', value: 'Cafe', icon: '☕' },
               { label: 'Steel & PEB (46)', value: 'Steel', icon: '🔩' },
@@ -876,13 +876,14 @@ export default function TelecallerApp() {
                 <span>📍</span> West Delhi Hub:
               </span>
               {[
-                { label: 'All West Delhi (80)', value: 'all' },
-                { label: '✨ Rajouri Garden (20)', value: 'Rajouri Garden' },
-                { label: '🪙 Karol Bagh Bank St (20)', value: 'Karol Bagh' },
-                { label: '👑 Tilak Nagar (15)', value: 'Tilak Nagar' },
-                { label: '💎 Punjabi Bagh (15)', value: 'Punjabi Bagh' },
-                { label: '🏬 Janakpuri (5)', value: 'Janakpuri' },
-                { label: '🏛️ Paschim Vihar (5)', value: 'Paschim Vihar' }
+                { label: 'All West Delhi (180)', value: 'all' },
+                { label: '🪙 Karol Bagh Bank St (45)', value: 'Karol Bagh' },
+                { label: '✨ Rajouri Garden (35)', value: 'Rajouri Garden' },
+                { label: '👑 Tilak Nagar (25)', value: 'Tilak Nagar' },
+                { label: '💎 Punjabi Bagh (22)', value: 'Punjabi Bagh' },
+                { label: '🌟 Pitampura & Rohini (25)', value: 'Pitampura|Rohini' },
+                { label: '🏬 Janakpuri (15)', value: 'Janakpuri' },
+                { label: '🏛️ Paschim Vihar (13)', value: 'Paschim Vihar' }
               ].map(hub => (
                 <button
                   key={hub.value}
