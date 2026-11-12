@@ -25,10 +25,22 @@ export async function GET(req: NextRequest) {
       teamPerformance = await getCallerPerformance(callers.map(c => ({ username: c.username, name: c.name })));
     }
 
+    let dbName = 'unknown';
+    let totalInDb = 0;
+    try {
+      const { connectToDatabase } = await import('@/lib/mongodb');
+      const { db } = await connectToDatabase();
+      dbName = db.databaseName;
+      totalInDb = await db.collection('leads').countDocuments();
+    } catch (e: any) {
+      dbName = 'error: ' + e.message;
+    }
+
     return NextResponse.json({
       success: true,
       stats,
-      teamPerformance
+      teamPerformance,
+      dbInfo: { dbName, totalInDb }
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
